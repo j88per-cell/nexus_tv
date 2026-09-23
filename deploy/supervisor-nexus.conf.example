@@ -1,0 +1,13 @@
+; Sample supervisor config for the Nexus API.
+; Drop into /etc/supervisor/conf.d/nexus.conf then `supervisorctl reread && supervisorctl update`.
+
+[program:nexus_api]
+directory=/opt/nexus/backend
+command=node src/server.js
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+user=nexus
+redirect_stderr=true
+stdout_logfile=/opt/nexus/backend/nexus.log

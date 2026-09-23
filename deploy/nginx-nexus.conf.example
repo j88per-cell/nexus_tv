@@ -1,0 +1,62 @@
+# Sample nginx config for Nexus, following a *.home local-DNS convention.
+# Install: sudo cp deploy/nginx-nexus.conf.example /etc/nginx/sites-available/nexus.conf
+#          sudo ln -s /etc/nginx/sites-available/nexus.conf /etc/nginx/sites-enabled/nexus.conf
+#          sudo nginx -t && sudo systemctl reload nginx
+
+server {
+    listen 80;
+    server_name nexus.home;
+
+    # Dedicated log files (separate from the global nginx access/error log) so requests
+    # are easy to tail: `tail -f /var/log/nginx/nexus-access.log`.
+    access_log /var/log/nginx/nexus-access.log;
+    error_log /var/log/nginx/nexus-error.log;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:4100;
+        proxy_set_header Host $host;
+    }
+
+    # Channel lineup. Short path (/m3u) because this gets typed on TV remotes; also kept
+    # at /streams/playlist.m3u(8) for discoverability alongside the per-channel URLs.
+    # (exact-match locations take priority over the /streams/ prefix block below).
+    location = /m3u {
+        proxy_pass http://127.0.0.1:4100/api/channels/playlist.m3u;
+    }
+    location = /streams/playlist.m3u {
+        proxy_pass http://127.0.0.1:4100/api/channels/playlist.m3u;
+    }
+    location = /streams/playlist.m3u8 {
+        proxy_pass http://127.0.0.1:4100/api/channels/playlist.m3u8;
+    }
+
+    # Xtream Codes-compatible API, for player apps (e.g. IPTV Smarters Pro) that use that
+    # login/URL scheme instead of a plain M3U + XMLTV pair.
+    location = /player_api.php {
+        proxy_pass http://127.0.0.1:4100/player_api.php;
+    }
+    location = /xmltv.php {
+        proxy_pass http://127.0.0.1:4100/xmltv.php;
+    }
+    location /live/ {
+        proxy_pass http://127.0.0.1:4100;
+    }
+
+    # Liquidsoap-written HLS segments/playlists, one subdirectory per channel number.
+    location /streams/ {
+        alias /opt/nexus/data/hls/;
+        add_header Cache-Control no-cache;
+        add_header Access-Control-Allow-Origin *;
+        types {
+            application/vnd.apple.mpegurl m3u8;
+            video/mp2t ts;
+        }
+    }
+
+    # Vue SPA build output (npm run build in frontend/)
+    root /opt/nexus/frontend/dist;
+    index index.html;
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

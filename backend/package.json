@@ -1,0 +1,18 @@
+{
+  "name": "@nexus/backend",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "migrate": "DOTENV_CONFIG_PATH=../.env NODE_OPTIONS=-r\\ dotenv/config node-pg-migrate",
+    "scan": "node src/scanner/cli.js",
+    "generate-schedules": "node src/scheduler/cli.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "node-pg-migrate": "^7.6.1",
+    "pg": "^8.12.0"
+  }
+}
