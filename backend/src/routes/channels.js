@@ -83,9 +83,9 @@ router.put('/:id/rule', async (req, res) => {
     return res.status(400).json({ error: "rule_type must be 'folder' or 'show'" });
   }
   try {
-    const rule = db.transaction(() => {
-      db.querySync('DELETE FROM channel_rules WHERE channel_id = $1', [channel.id]);
-      const { rows } = db.querySync(
+    const rule = await db.transaction(async () => {
+      await db.query('DELETE FROM channel_rules WHERE channel_id = $1', [channel.id]);
+      const { rows } = await db.query(
         'INSERT INTO channel_rules (channel_id, rule_type, rule_value, shuffle) VALUES ($1, $2, $3, $4) RETURNING *',
         [channel.id, rule_type, rule_value, !!shuffle]
       );
@@ -114,16 +114,19 @@ router.put('/:id/blocks', async (req, res) => {
     }
   }
   try {
-    const inserted = db.transaction(() => {
-      db.querySync('DELETE FROM channel_rules WHERE channel_id = $1', [channel.id]);
-      return blocks.map((b, i) => {
-        const { rows } = db.querySync(
+    const inserted = await db.transaction(async () => {
+      await db.query('DELETE FROM channel_rules WHERE channel_id = $1', [channel.id]);
+      const results = [];
+      for (let i = 0; i < blocks.length; i += 1) {
+        const b = blocks[i];
+        const { rows } = await db.query(
           `INSERT INTO channel_rules (channel_id, rule_type, rule_value, shuffle, block_order, block_count)
            VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
           [channel.id, b.rule_type, b.rule_value, !!b.shuffle, i, Number(b.count) > 0 ? Number(b.count) : 1]
         );
-        return rows[0];
-      });
+        results.push(rows[0]);
+      }
+      return results;
     });
     await extendChannelSchedule(channel, { regenerateFromNow: true });
     res.status(201).json(inserted);

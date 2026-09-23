@@ -56,12 +56,12 @@ router.post('/groups', async (req, res) => {
     return res.status(400).json({ error: 'name and media_file_ids are required' });
   }
   try {
-    const groupId = db.transaction(() => {
-      const { rows } = db.querySync('INSERT INTO episode_groups (name) VALUES ($1) RETURNING id', [name]);
+    const groupId = await db.transaction(async () => {
+      const { rows } = await db.query('INSERT INTO episode_groups (name) VALUES ($1) RETURNING id', [name]);
       const id = rows[0].id;
-      media_file_ids.forEach((fileId, i) => {
-        db.querySync('UPDATE media_files SET group_id = $1, part_number = $2 WHERE id = $3', [id, i + 1, fileId]);
-      });
+      for (let i = 0; i < media_file_ids.length; i += 1) {
+        await db.query('UPDATE media_files SET group_id = $1, part_number = $2 WHERE id = $3', [id, i + 1, media_file_ids[i]]);
+      }
       return id;
     });
     res.status(201).json({ id: groupId });

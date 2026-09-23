@@ -80,9 +80,9 @@ async function extendChannelSchedule(channel, { horizonHours = config.scheduleHo
 
   if (rowsToInsert.length === 0) return 0;
 
-  db.transaction(() => {
+  await db.transaction(async () => {
     for (const row of rowsToInsert) {
-      db.querySync(
+      await db.query(
         `INSERT INTO channel_schedule (media_file_id, scheduled_start, scheduled_end, sort_order, channel_id)
          VALUES ($1, $2, $3, $4, $5)`,
         [row.mediaFileId, row.start, row.end, row.sortOrder, channel.id]
