@@ -33,7 +33,7 @@ async function getRecentlyScheduled(channelId, cursorStart) {
 async function extendChannelSchedule(channel, { horizonHours = config.scheduleHorizonHours, regenerateFromNow = false } = {}) {
   if (regenerateFromNow) {
     await db.query(
-      "DELETE FROM channel_schedule WHERE channel_id = $1 AND served = false AND scheduled_start > now()",
+      "DELETE FROM channel_schedule WHERE channel_id = $1 AND served = 0 AND scheduled_start > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
       [channel.id]
     );
   }
@@ -80,20 +80,15 @@ async function extendChannelSchedule(channel, { horizonHours = config.scheduleHo
 
   if (rowsToInsert.length === 0) return 0;
 
-  const values = [];
-  const params = [];
-  rowsToInsert.forEach((row, i) => {
-    const base = i * 4;
-    values.push(`($${base + 1}::integer, $${base + 2}::timestamptz, $${base + 3}::timestamptz, $${base + 4}::bigint)`);
-    params.push(row.mediaFileId, row.start, row.end, row.sortOrder);
+  db.transaction(() => {
+    for (const row of rowsToInsert) {
+      db.querySync(
+        `INSERT INTO channel_schedule (media_file_id, scheduled_start, scheduled_end, sort_order, channel_id)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [row.mediaFileId, row.start, row.end, row.sortOrder, channel.id]
+      );
+    }
   });
-
-  await db.query(
-    `INSERT INTO channel_schedule (media_file_id, scheduled_start, scheduled_end, sort_order, channel_id)
-     SELECT v.media_file_id, v.scheduled_start, v.scheduled_end, v.sort_order, $${params.length + 1}
-     FROM (VALUES ${values.join(', ')}) AS v(media_file_id, scheduled_start, scheduled_end, sort_order)`,
-    [...params, channel.id]
-  );
 
   return rowsToInsert.length;
 }

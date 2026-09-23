@@ -6,8 +6,8 @@ async function getChannelEpg(channelId, hoursAhead = 24) {
      FROM channel_schedule cs
      JOIN media_files mf ON mf.id = cs.media_file_id
      WHERE cs.channel_id = $1
-       AND cs.scheduled_end > now()
-       AND cs.scheduled_start < now() + ($2 || ' hours')::interval
+       AND cs.scheduled_end > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+       AND cs.scheduled_start < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '+' || $2 || ' hours')
      ORDER BY cs.sort_order ASC`,
     [channelId, hoursAhead]
   );

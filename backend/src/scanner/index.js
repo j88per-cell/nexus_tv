@@ -27,15 +27,15 @@ async function* walk(dir) {
   }
 }
 
-async function findOrCreateGroupId(client, showName, season, episode) {
+async function findOrCreateGroupId(showName, season, episode) {
   const name = `${showName} S${String(season ?? 0).padStart(2, '0')}E${String(episode ?? 0).padStart(2, '0')}`;
-  const existing = await client.query('SELECT id FROM episode_groups WHERE name = $1', [name]);
+  const existing = await db.query('SELECT id FROM episode_groups WHERE name = $1', [name]);
   if (existing.rows[0]) return existing.rows[0].id;
-  const inserted = await client.query('INSERT INTO episode_groups (name) VALUES ($1) RETURNING id', [name]);
+  const inserted = await db.query('INSERT INTO episode_groups (name) VALUES ($1) RETURNING id', [name]);
   return inserted.rows[0].id;
 }
 
-async function upsertFile(client, root, absolutePath) {
+async function upsertFile(root, absolutePath) {
   const relative = path.relative(root, absolutePath);
   const segments = relative.split(path.sep);
   const parsed = parseMediaPath(segments);
@@ -56,13 +56,13 @@ async function upsertFile(client, root, absolutePath) {
 
   let groupId = null;
   if (parsed.kind === 'episode' && parsed.part_number != null && parsed.show_name) {
-    groupId = await findOrCreateGroupId(client, parsed.show_name, parsed.season, parsed.episode);
+    groupId = await findOrCreateGroupId(parsed.show_name, parsed.season, parsed.episode);
   }
 
-  await client.query(
+  await db.query(
     `INSERT INTO media_files
        (absolute_path, kind, title, show_name, season, episode, duration_seconds, file_size, group_id, part_number, last_seen_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
      ON CONFLICT (absolute_path) DO UPDATE SET
        kind = EXCLUDED.kind,
        title = EXCLUDED.title,
@@ -73,7 +73,7 @@ async function upsertFile(client, root, absolutePath) {
        file_size = EXCLUDED.file_size,
        group_id = EXCLUDED.group_id,
        part_number = EXCLUDED.part_number,
-       last_seen_at = now()`,
+       last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`,
     [
       absolutePath,
       parsed.kind,
@@ -90,27 +90,22 @@ async function upsertFile(client, root, absolutePath) {
 }
 
 async function scan(roots = config.mediaRoots) {
-  const client = await db.pool.connect();
   let count = 0;
   const scanStart = new Date();
-  try {
-    for (const root of roots) {
-      for await (const filePath of walk(root)) {
-        await upsertFile(client, root, filePath);
-        count += 1;
-      }
-      // Anything under this root not touched by the walk just now (moved/deleted since the
-      // last scan) is immediately marked stale, rather than waiting up to STALE_AFTER (2
-      // days, see rules.js) to naturally age out — otherwise a moved file's old row keeps
-      // getting selected for scheduling/proxying long after the path stopped existing.
-      await client.query(
-        `UPDATE media_files SET last_seen_at = 'epoch'::timestamptz
-         WHERE absolute_path LIKE $1 || '%' AND last_seen_at < $2`,
-        [root, scanStart]
-      );
+  for (const root of roots) {
+    for await (const filePath of walk(root)) {
+      await upsertFile(root, filePath);
+      count += 1;
     }
-  } finally {
-    client.release();
+    // Anything under this root not touched by the walk just now (moved/deleted since the
+    // last scan) is immediately marked stale, rather than waiting up to STALE_AFTER (2
+    // days, see rules.js) to naturally age out — otherwise a moved file's old row keeps
+    // getting selected for scheduling/proxying long after the path stopped existing.
+    await db.query(
+      `UPDATE media_files SET last_seen_at = '1970-01-01T00:00:00.000Z'
+       WHERE absolute_path LIKE $1 || '%' AND last_seen_at < $2`,
+      [root, scanStart]
+    );
   }
   return count;
 }

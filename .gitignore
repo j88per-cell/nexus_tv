@@ -2,5 +2,7 @@ node_modules/
 .env
 dist/
 data/hls/
+*.sqlite3
+*.sqlite3-*
 *.log
 .DS_Store

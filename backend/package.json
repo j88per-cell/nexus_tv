@@ -5,14 +5,13 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "migrate": "DOTENV_CONFIG_PATH=../.env NODE_OPTIONS=-r\\ dotenv/config node-pg-migrate",
+    "migrate": "node src/db/migrate.js",
     "scan": "node src/scanner/cli.js",
     "generate-schedules": "node src/scheduler/cli.js"
   },
   "dependencies": {
+    "better-sqlite3": "^11.3.0",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "node-pg-migrate": "^7.6.1",
-    "pg": "^8.12.0"
+    "express": "^4.19.2"
   }
 }

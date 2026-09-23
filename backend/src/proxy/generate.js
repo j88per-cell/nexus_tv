@@ -91,7 +91,7 @@ async function generateProxies({
   // aside for manual attention. See backend/src/proxy/failures.js to list/retry them.
   const { rows: files } = await db.query(
     `SELECT * FROM media_files WHERE proxy_path IS NULL AND proxy_failed_at IS NULL
-     AND last_seen_at > now() - interval '2 days'
+     AND last_seen_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 days')
      ORDER BY added_at ASC LIMIT $1`,
     [maxFiles]
   );
@@ -107,13 +107,16 @@ async function generateProxies({
       attempted += 1;
       try {
         const { outPath, encoder } = await proxyOneFile(file);
-        await db.query('UPDATE media_files SET proxy_path = $1, proxied_at = now() WHERE id = $2', [outPath, file.id]);
+        await db.query(
+          "UPDATE media_files SET proxy_path = $1, proxied_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = $2",
+          [outPath, file.id]
+        );
         succeeded += 1;
         console.log(`Proxied (${encoder}): ${file.absolute_path} -> ${outPath}`);
       } catch (err) {
         console.error(`Proxy failed for ${file.absolute_path}: ${err.message}`);
         await db.query(
-          'UPDATE media_files SET proxy_failed_at = now(), proxy_last_error = $1 WHERE id = $2',
+          "UPDATE media_files SET proxy_failed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), proxy_last_error = $1 WHERE id = $2",
           [err.message.slice(-1000), file.id]
         );
       }

@@ -34,22 +34,23 @@ function buildUnits(mediaFiles) {
 
 // Files not seen in the most recent scan are excluded — they've likely been moved/renamed/
 // deleted on disk, and scheduling a stale path just makes Liquidsoap fail on air.
-const STALE_AFTER = "interval '2 days'";
+const STALE_CUTOFF_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 days')";
 
 async function fetchRuleMatches(rule) {
   if (rule.rule_type === 'folder') {
     // rule_value may be a comma-separated list of folder paths (e.g. to combine two
     // small genres like Drama+Family into one channel) as well as a single path.
     const prefixes = rule.rule_value.split(',').map((p) => `${p.trim()}%`);
+    const clause = prefixes.map((_, i) => `absolute_path LIKE $${i + 1}`).join(' OR ');
     const { rows } = await db.query(
-      `SELECT * FROM media_files WHERE absolute_path LIKE ANY($1) AND last_seen_at > now() - ${STALE_AFTER} ORDER BY title`,
-      [prefixes]
+      `SELECT * FROM media_files WHERE (${clause}) AND last_seen_at > ${STALE_CUTOFF_SQL} ORDER BY title`,
+      prefixes
     );
     return rows;
   }
   if (rule.rule_type === 'show') {
     const { rows } = await db.query(
-      `SELECT * FROM media_files WHERE show_name = $1 AND last_seen_at > now() - ${STALE_AFTER}
+      `SELECT * FROM media_files WHERE show_name = $1 AND last_seen_at > ${STALE_CUTOFF_SQL}
        ORDER BY season NULLS LAST, episode NULLS LAST, part_number NULLS LAST`,
       [rule.rule_value]
     );

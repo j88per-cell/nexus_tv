@@ -16,7 +16,7 @@ async function main() {
     }
     for (const f of failures) {
       console.log(`[${f.id}] ${f.absolute_path}`);
-      console.log(`  failed_at: ${f.proxy_failed_at.toISOString()}`);
+      console.log(`  failed_at: ${f.proxy_failed_at}`);
       console.log(`  error: ${f.proxy_last_error}`);
       console.log('');
     }

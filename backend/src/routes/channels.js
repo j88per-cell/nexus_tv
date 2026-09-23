@@ -82,22 +82,19 @@ router.put('/:id/rule', async (req, res) => {
   if (!['folder', 'show'].includes(rule_type)) {
     return res.status(400).json({ error: "rule_type must be 'folder' or 'show'" });
   }
-  const client = await db.pool.connect();
   try {
-    await client.query('BEGIN');
-    await client.query('DELETE FROM channel_rules WHERE channel_id = $1', [channel.id]);
-    const { rows } = await client.query(
-      'INSERT INTO channel_rules (channel_id, rule_type, rule_value, shuffle) VALUES ($1, $2, $3, $4) RETURNING *',
-      [channel.id, rule_type, rule_value, !!shuffle]
-    );
-    await client.query('COMMIT');
+    const rule = db.transaction(() => {
+      db.querySync('DELETE FROM channel_rules WHERE channel_id = $1', [channel.id]);
+      const { rows } = db.querySync(
+        'INSERT INTO channel_rules (channel_id, rule_type, rule_value, shuffle) VALUES ($1, $2, $3, $4) RETURNING *',
+        [channel.id, rule_type, rule_value, !!shuffle]
+      );
+      return rows[0];
+    });
     await extendChannelSchedule(channel, { regenerateFromNow: true });
-    res.status(201).json(rows[0]);
+    res.status(201).json(rule);
   } catch (err) {
-    await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
-  } finally {
-    client.release();
   }
 });
 
@@ -116,28 +113,22 @@ router.put('/:id/blocks', async (req, res) => {
       return res.status(400).json({ error: "each block's rule_type must be 'folder' or 'show'" });
     }
   }
-  const client = await db.pool.connect();
   try {
-    await client.query('BEGIN');
-    await client.query('DELETE FROM channel_rules WHERE channel_id = $1', [channel.id]);
-    const inserted = [];
-    for (let i = 0; i < blocks.length; i += 1) {
-      const b = blocks[i];
-      const { rows } = await client.query(
-        `INSERT INTO channel_rules (channel_id, rule_type, rule_value, shuffle, block_order, block_count)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-        [channel.id, b.rule_type, b.rule_value, !!b.shuffle, i, Number(b.count) > 0 ? Number(b.count) : 1]
-      );
-      inserted.push(rows[0]);
-    }
-    await client.query('COMMIT');
+    const inserted = db.transaction(() => {
+      db.querySync('DELETE FROM channel_rules WHERE channel_id = $1', [channel.id]);
+      return blocks.map((b, i) => {
+        const { rows } = db.querySync(
+          `INSERT INTO channel_rules (channel_id, rule_type, rule_value, shuffle, block_order, block_count)
+           VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+          [channel.id, b.rule_type, b.rule_value, !!b.shuffle, i, Number(b.count) > 0 ? Number(b.count) : 1]
+        );
+        return rows[0];
+      });
+    });
     await extendChannelSchedule(channel, { regenerateFromNow: true });
     res.status(201).json(inserted);
   } catch (err) {
-    await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
-  } finally {
-    client.release();
   }
 });
 

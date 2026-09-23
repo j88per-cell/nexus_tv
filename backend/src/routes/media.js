@@ -9,7 +9,9 @@ router.get('/', async (req, res) => {
   const params = [];
   if (q) {
     params.push(`%${q}%`);
-    clauses.push(`title ILIKE $${params.length}`);
+    // Plain LIKE, not ILIKE (SQLite has no ILIKE) — SQLite's LIKE is already
+    // case-insensitive for ASCII by default, which is what ILIKE gave us on Postgres.
+    clauses.push(`title LIKE $${params.length}`);
   }
   if (show_name) {
     params.push(show_name);
@@ -38,11 +40,14 @@ router.get('/shows', async (req, res) => {
 
 router.get('/groups', async (req, res) => {
   const { rows } = await db.query(
-    `SELECT g.id, g.name, json_agg(json_build_object('id', mf.id, 'title', mf.title, 'part_number', mf.part_number) ORDER BY mf.part_number) AS files
-     FROM episode_groups g JOIN media_files mf ON mf.group_id = g.id
-     GROUP BY g.id, g.name ORDER BY g.name`
+    `SELECT g.id, g.name,
+       (SELECT json_group_array(json_object('id', mf.id, 'title', mf.title, 'part_number', mf.part_number))
+        FROM (SELECT * FROM media_files WHERE group_id = g.id ORDER BY part_number) mf) AS files
+     FROM episode_groups g
+     WHERE EXISTS (SELECT 1 FROM media_files WHERE group_id = g.id)
+     ORDER BY g.name`
   );
-  res.json(rows);
+  res.json(rows.map((r) => ({ ...r, files: JSON.parse(r.files) })));
 });
 
 router.post('/groups', async (req, res) => {
@@ -50,25 +55,18 @@ router.post('/groups', async (req, res) => {
   if (!name || !Array.isArray(media_file_ids) || media_file_ids.length === 0) {
     return res.status(400).json({ error: 'name and media_file_ids are required' });
   }
-  const client = await db.pool.connect();
   try {
-    await client.query('BEGIN');
-    const { rows } = await client.query('INSERT INTO episode_groups (name) VALUES ($1) RETURNING id', [name]);
-    const groupId = rows[0].id;
-    for (let i = 0; i < media_file_ids.length; i += 1) {
-      await client.query('UPDATE media_files SET group_id = $1, part_number = $2 WHERE id = $3', [
-        groupId,
-        i + 1,
-        media_file_ids[i],
-      ]);
-    }
-    await client.query('COMMIT');
+    const groupId = db.transaction(() => {
+      const { rows } = db.querySync('INSERT INTO episode_groups (name) VALUES ($1) RETURNING id', [name]);
+      const id = rows[0].id;
+      media_file_ids.forEach((fileId, i) => {
+        db.querySync('UPDATE media_files SET group_id = $1, part_number = $2 WHERE id = $3', [id, i + 1, fileId]);
+      });
+      return id;
+    });
     res.status(201).json({ id: groupId });
   } catch (err) {
-    await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
-  } finally {
-    client.release();
   }
 });
 

@@ -7,7 +7,7 @@ function required(name, fallback) {
 }
 
 module.exports = {
-  databaseUrl: required('DATABASE_URL'),
+  sqlitePath: required('SQLITE_PATH', './data/nexus.sqlite3'),
   port: parseInt(process.env.PORT || '4100', 10),
   mediaRoots: required('MEDIA_ROOTS', '/Movies').split(',').map((s) => s.trim()),
   hlsRoot: required('HLS_ROOT', '/opt/nexus/data/hls'),
